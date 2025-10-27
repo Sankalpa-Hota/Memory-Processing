@@ -13,10 +13,10 @@ module mulacc2_opt(
     reg [31:0] b_reg;
 
   // Pipeline stage for multiplication (reduces critical path)
-    reg [58:0] mult_reg;
+    reg [64:0] mult_reg;
 
   // Accumulator register
-    reg [58:0] psum_reg;
+    reg [64:0] psum_reg;
     assign psum = psum_reg; 
 
   //----------------------------------------------------------------
@@ -24,10 +24,10 @@ module mulacc2_opt(
   //---------------------------------------------------------------
     always @(posedge clk) begin
         if (!reset_n) begin
-          a_reg    <= 26'd0;
-          b_reg    <= 29'd0;
-          mult_reg <= 59'd0;
-          psum_reg <= 59'd0;
+          a_reg    <= 31'd0;
+          b_reg    <= 31'd0;
+          mult_reg <= 64'd0;
+          psum_reg <= 64'd0;
         end else begin
           a_reg <= a;
           b_reg <= b;
@@ -37,7 +37,7 @@ module mulacc2_opt(
 
       // Accumulator with clear and next controls
           if (clear)
-            psum_reg <= 59'd0;        // Clear: reset sum
+            psum_reg <= 64'd0;        // Clear: reset sum
           else if (next)
             psum_reg <= psum_reg + mult_reg; // Accumulate pipelined result
           // No action if next=0, saves unnecessary toggling
