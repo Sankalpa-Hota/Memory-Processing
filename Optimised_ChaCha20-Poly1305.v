@@ -1,4 +1,4 @@
-// chacha20_poly1305_opt.v
+
 `timescale 1ns/1ps
 
 module chacha20_poly1305_opt(
