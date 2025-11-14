@@ -9,6 +9,7 @@ module tb_chacha20_poly1305_core;
     wire [127:0] tag;
 
     integer cycle_count;
+    integer block_cycle_count;
 
     initial clk=0;
     always #5 clk=~clk;
@@ -21,39 +22,50 @@ module tb_chacha20_poly1305_core;
         .data_out(data_out), .tag(tag)
     );
 
-    // VCD dump
     initial begin
         $dumpfile("tb_chacha20_poly1305_core.vcd");
         $dumpvars(0, tb_chacha20_poly1305_core);
     end
 
-    // Global cycle counter
-    initial cycle_count = 0;
+    initial begin
+        cycle_count = 0;
+        block_cycle_count = 0;
+    end
+
     always @(posedge clk) cycle_count = cycle_count + 1;
 
     initial begin
-        rst=0; init=0; next=0; done=0; encdec=1;
+        rst = 0; init = 0; next = 0; done = 0; encdec = 1;
         key = 256'h0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;
         nonce = {32'h11111111,32'h22222222,32'h33333333};
-        data_in = {8{64'hcafebabedeadbeef}}; // 8 × 64 = 512 bits
+        data_in = {8{64'hcafebabedeadbeef}};
 
-
-        #20 rst=1;
+        #20 rst = 1;
         $display("[Cycle %0d] RESET released", cycle_count);
 
-        #10 init=1; @(posedge clk); init=0;
+        // INIT
+        block_cycle_count = cycle_count;
+        init = 1; @(posedge clk); init = 0;
         $display("[Cycle %0d] INIT asserted", cycle_count);
 
-        #10 next=1; @(posedge clk); next=0;
+        // NEXT
+        block_cycle_count = cycle_count;
+        next = 1; @(posedge clk); next = 0;
         $display("[Cycle %0d] NEXT asserted", cycle_count);
 
-        wait(valid);
+        // Wait for valid output
+        block_cycle_count = cycle_count;
+        while(!valid) @(posedge clk);
         $display("[Cycle %0d] VALID output received, data_out=%h", cycle_count, data_out);
+        $display("Block cycles taken: %0d", cycle_count - block_cycle_count);
 
-        wait(tag_ok);
+        // Wait for tag
+        block_cycle_count = cycle_count;
+        while(!tag_ok) @(posedge clk);
         $display("[Cycle %0d] TAG computed, tag=%h", cycle_count, tag);
+        $display("Tag computation cycles: %0d", cycle_count - block_cycle_count);
 
-        $display("[Cycle %0d] Total simulation cycles = %0d", cycle_count, cycle_count);
+        $display("Total simulation cycles = %0d", cycle_count);
         #20 $finish;
     end
 endmodule
