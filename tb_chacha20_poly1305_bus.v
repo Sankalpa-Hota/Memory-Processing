@@ -1,101 +1,76 @@
-//top wrapper bus test
 `timescale 1ns/1ps
 module tb_chacha20_poly1305_bus;
-    reg clk, rst;
-    reg cs, we;
+    reg clk, rst, cs, we;
     reg [7:0] addr;
-    reg [31:0] wdata;
-    wire [31:0] rdata;
+    reg [511:0] wdata;
+    wire [511:0] rdata;
 
     integer cycle_count;
 
-    // clock
+    // Clock
     initial clk = 0;
     always #5 clk = ~clk;
 
     // DUT
     chacha20_poly1305_bus top(
-        .clk(clk),
-        .reset_n(rst),
-        .cs(cs),
-        .we(we),
+        .clk(clk), .reset_n(rst),
+        .cs(cs), .we(we),
         .address(addr),
         .write_data(wdata),
         .read_data(rdata)
     );
 
-    // waveform
+    // VCD
     initial begin
         $dumpfile("tb_chacha20_poly1305_bus.vcd");
         $dumpvars(0, tb_chacha20_poly1305_bus);
     end
 
-    // global cycle counter
+    // Global cycle counter
     initial cycle_count = 0;
-    always @(posedge clk) begin
-        if (!rst)
-            cycle_count = 0;
-        else
-            cycle_count = cycle_count + 1;
-    end
+    always @(posedge clk) cycle_count = cycle_count + 1;
 
-    // bus tasks
-    task bus_write(input [7:0] a, input [31:0] v);
+    // Bus write
+    task bus_write(input [7:0] a, input [511:0] v);
     begin
-        @(posedge clk);
-        cs = 1; we = 1; addr = a; wdata = v;
-        @(posedge clk);
-        cs = 0; we = 0;
-        $display("WRITE: addr=%02h, data=%08h at cycle %0d", a, v, cycle_count);
+        @(posedge clk); cs=1; we=1; addr=a; wdata=v;
+        @(posedge clk); cs=0; we=0;
+        $display("[Cycle %0d] WRITE: addr=%02h, data=%h", cycle_count, a, v);
     end
     endtask
 
+    // Bus read
     task bus_read(input [7:0] a);
     begin
-        @(posedge clk);
-        cs = 1; we = 0; addr = a;
-        @(negedge clk);
-        $display("READ: addr=%02h, data=%08h at cycle %0d", a, rdata, cycle_count);
-        @(posedge clk); cs = 0;
+        @(posedge clk); cs=1; we=0; addr=a;
+        @(posedge clk); cs=0;
+        $display("[Cycle %0d] READ: addr=%02h, data=%h", cycle_count, a, rdata);
     end
     endtask
 
-    // test procedure
+    // Test procedure
     initial begin
-        rst = 0; cs = 0; we = 0; addr = 0; wdata = 0;
-        #20 rst = 1;
+        rst=0; cs=0; we=0; addr=0; wdata=0;
+        #20 rst=1;
+        $display("[Cycle %0d] RESET released", cycle_count);
 
-        // Write key
-        bus_write(8'h10, 32'h00112233);
-        bus_write(8'h11, 32'h44556677);
-        bus_write(8'h12, 32'h8899aabb);
-        bus_write(8'h13, 32'hccddeeff);
-        bus_write(8'h14, 32'h01234567);
-        bus_write(8'h15, 32'h89abcdef);
-        bus_write(8'h16, 32'hdeadbeef);
-        bus_write(8'h17, 32'hfeedface);
-
-        // Write nonce
-        bus_write(8'h20, 32'h01010101);
-        bus_write(8'h21, 32'h02020202);
-        bus_write(8'h22, 32'h03030303);
-
-        // Write data
-        bus_write(8'h30, 32'haaaaaaaa);
-        bus_write(8'h31, 32'hbbbbbbbb);
-
-        // Trigger init
-        bus_write(8'h08, 32'h1);
+        // Key write
+        bus_write(8'h10, {16{32'h00112233}});
+        // Nonce write
+        bus_write(8'h20, {16{32'h01020304}});
+        // Data write
+        bus_write(8'h30, {16{32'hdeadbeef}});
+        // Init
+        bus_write(8'h08, 512'h1);
         #20
-        // Trigger next
-        bus_write(8'h08, 32'h2);
-        #200
-        // Trigger done
-        bus_write(8'h08, 32'h4);
-        #20
-        bus_read(8'h09); // status
+        // Next
+        bus_write(8'h08, 512'h2);
+        #50
+        // Done
+        bus_write(8'h08, 512'h4);
+        #20 bus_read(8'h09); // status
 
-        $display("Total cycles = %0d", cycle_count);
+        $display("[Cycle %0d] Total cycles = %0d", cycle_count, cycle_count);
         #20 $finish;
     end
 endmodule
