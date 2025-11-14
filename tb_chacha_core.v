@@ -30,3 +30,7 @@ module tb_chacha_core;
     #20 rst = 1;
     #20 init = 1;
     #10 init = 0;
+    #50 $display("keystream_valid=%b", data_out_valid);
+    #20 $finish;
+  end
+endmodule
