@@ -8,7 +8,7 @@ module chacha20_poly1305_bus(
     input  wire [511:0] write_data,
     output reg  [511:0] read_data
 );
-    reg init_reg, next_reg, done_reg;
+    reg init_reg, next_reg;
     reg encdec_reg;
     reg [31:0] key_reg[0:7];
     reg [31:0] nonce_reg[0:2];
@@ -21,6 +21,7 @@ module chacha20_poly1305_bus(
                                  data_reg[4],data_reg[5],data_reg[6],data_reg[7],
                                  data_reg[8],data_reg[9],data_reg[10],data_reg[11],
                                  data_reg[12],data_reg[13],data_reg[14],data_reg[15]};
+
     wire core_ready, core_valid, core_tag_ok;
     wire [511:0] core_data_out;
     wire [127:0] core_tag;
@@ -29,8 +30,6 @@ module chacha20_poly1305_bus(
         .clk(clk),
         .reset_n(reset_n),
         .init(init_reg),
-        .next(next_reg),
-        .done(done_reg),
         .encdec(encdec_reg),
         .key(core_key),
         .nonce(core_nonce),
@@ -45,13 +44,13 @@ module chacha20_poly1305_bus(
     integer i;
     always @(posedge clk or negedge reset_n) begin
         if(!reset_n) begin
-            init_reg<=0; next_reg<=0; done_reg<=0; encdec_reg<=0;
+            init_reg<=0; next_reg<=0; encdec_reg<=0;
             for(i=0;i<8;i=i+1) key_reg[i]<=0;
             for(i=0;i<3;i=i+1) nonce_reg[i]<=0;
             for(i=0;i<16;i=i+1) data_reg[i]<=0;
         end else if(cs && we) begin
             case(address)
-                8'h08: begin init_reg <= write_data[0]; next_reg <= write_data[1]; done_reg <= write_data[2]; end
+                8'h08: begin init_reg <= write_data[0]; next_reg <= write_data[1]; end
                 8'h0a: encdec_reg <= write_data[0];
                 8'h10,8'h11,8'h12,8'h13,8'h14,8'h15,8'h16,8'h17:
                     key_reg[address[2:0]] <= write_data[31:0];
@@ -66,11 +65,11 @@ module chacha20_poly1305_bus(
         if(!reset_n) read_data <= 0;
         else if(cs && !we) begin
             case(address)
-                8'h00: read_data <= 512'h6332307031333035302e3031;
-                8'h09: read_data <= {509'h0, core_tag_ok, core_valid, core_ready};
-                8'h0a: read_data <= {511'h0, encdec_reg};
+                8'h00: read_data <= 512'h6332307031333035302e3031; // version string
+                8'h09: read_data <= {509'b0, core_tag_ok, core_valid, core_ready};
+                8'h0a: read_data <= {511'b0, encdec_reg};
                 8'h30: read_data <= core_data_out;
-                8'h40: read_data <= {384'h0, core_tag};
+                8'h40: read_data <= {384'b0, core_tag};
                 default: read_data <= 0;
             endcase
         end
