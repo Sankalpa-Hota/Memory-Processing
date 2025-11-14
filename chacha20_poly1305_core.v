@@ -1,5 +1,3 @@
-// chacha20_poly1305_core.v
-// Fully integrated ChaCha20 + Poly1305 using multiplier + reducer
 module chacha20_poly1305_core(
     input  wire clk,
     input  wire reset_n,
@@ -23,7 +21,6 @@ module chacha20_poly1305_core(
     wire [511:0] chacha_data_out;
     wire chacha_ready, chacha_valid;
 
-    // ChaCha20 core instance
     chacha_core cha_inst(
         .clk(clk),
         .reset_n(reset_n),
@@ -32,12 +29,12 @@ module chacha20_poly1305_core(
         .key(key),
         .ctr({32'h0, nonce[31:0]}),
         .iv(nonce[95:32]),
+        .data_in(data_in),
         .ready(chacha_ready),
         .data_out_valid(chacha_valid),
         .data_out(chacha_data_out)
     );
 
-    // Multiplier
     reg mul_start;
     reg [129:0] mul_a;
     reg [127:0] mul_b;
@@ -55,7 +52,6 @@ module chacha20_poly1305_core(
         .done(mul_done)
     );
 
-    // Reducer
     reg red_start;
     wire [129:0] red_out;
     wire red_done;
@@ -71,20 +67,20 @@ module chacha20_poly1305_core(
     );
 
     always @(posedge clk or negedge reset_n) begin
-        if (!reset_n) begin
+        if(!reset_n) begin
             r_reg <= 128'h0;
             s_reg <= 128'h0;
             acc_reg <= 130'h0;
             ready <= 1'b1;
-            valid <= 1'b0;
-            tag_ok <= 1'b0;
-            mul_start <= 1'b0;
-            red_start <= 1'b0;
+            valid <= 0;
+            tag_ok <= 0;
+            mul_start <= 0;
+            red_start <= 0;
         end else begin
-            valid <= 1'b0;
-            tag_ok <= 1'b0;
+            valid <= 0;
+            tag_ok <= 0;
 
-            if (chacha_valid) begin
+            if(chacha_valid) begin
                 r_reg <= chacha_data_out[127:0];
                 s_reg <= chacha_data_out[255:128];
                 mul_a <= {2'b0, acc_reg} + {2'b0, data_in[127:0]};
@@ -92,24 +88,21 @@ module chacha20_poly1305_core(
                 mul_start <= 1'b1;
             end
 
-            if (mul_done) begin
-                mul_start <= 1'b0;
+            if(mul_done) begin
+                mul_start <= 0;
                 red_start <= 1'b1;
             end
 
-            if (red_done) begin
+            if(red_done) begin
                 acc_reg <= red_out;
-                red_start <= 1'b0;
+                red_start <= 0;
                 valid <= 1'b1;
             end
 
-            if (done) begin
-                tag_ok <= 1'b1;
-            end
+            if(done) tag_ok <= 1'b1;
         end
     end
 
     assign data_out = chacha_data_out;
     assign tag = acc_reg[127:0] + s_reg;
-
 endmodule
