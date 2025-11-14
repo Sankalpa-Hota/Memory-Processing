@@ -11,7 +11,7 @@ module reduce_mod_poly1305(
     reg [257:0] val_reg;
     reg state;
 
-    // Move intermediate variables to module scope for Verilog-2001
+    // Intermediate vars must be module-level in Verilog-2001
     reg [129:0] lo;
     reg [127:0] hi;
     reg [130:0] tmp; // allow overflow
@@ -33,7 +33,6 @@ module reduce_mod_poly1305(
                 val_reg <= value_in;
                 state <= 1'b1;
             end else if(busy && state) begin
-                // fold hi into lo: lo + 5*hi
                 lo = val_reg[129:0];
                 hi = val_reg[257:130];
                 tmp = lo + (hi * 5);
@@ -49,3 +48,4 @@ module reduce_mod_poly1305(
         end
     end
 endmodule
+
