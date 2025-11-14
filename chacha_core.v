@@ -1,7 +1,5 @@
-
-// Behavioral ChaCha core stub for simulation only.
-// Produces a deterministic 512-bit "keystream" block when init/next asserted,
-// and asserts data_out_valid one cycle after request.
+// chacha_core.v -- corrected behavioral stub
+// Produces deterministic 512-bit "keystream" block one cycle after init/next is asserted.
 
 module chacha_core (
     input  wire         clk,
@@ -20,33 +18,39 @@ module chacha_core (
     output reg          data_out_valid
 );
 
-  // Simple internal register version of key to produce keystream
-  reg [255:0] key_reg;
+  // internal registers
+  reg [255:0] latched_key;
   reg [127:0] counter_reg;
+  reg request_pending;
 
   always @(posedge clk or negedge reset_n) begin
     if (!reset_n) begin
-      key_reg <= 256'h0;
+      latched_key <= 256'h0;
       counter_reg <= 128'h0;
       ready <= 1'b1;
       data_out <= 512'h0;
       data_out_valid <= 1'b0;
+      request_pending <= 1'b0;
     end else begin
-      data_out_valid <= 1'b0; // default deassert
-      if (init || next) begin
-        ready <= 1'b0;
-        // on request, latch key and update counter
-        key_reg <= key;
+      // default deassert
+      data_out_valid <= 1'b0;
+
+      // accept request (init or next) when ready
+      if ((init || next) && ready) begin
+        latched_key <= key;
         counter_reg <= counter_reg + 1;
-        // produce a deterministic pseudo-keystream: concat of key halves XORed with ctr/iv
+        request_pending <= 1'b1;
+        ready <= 1'b0;
+      end else if (request_pending) begin
+        // produce keystream one cycle after request
         data_out <= {
-            key_reg[255:128] ^ {64'h0, ctr},
-            key_reg[127:0]   ^ {64'h0, iv},
-            key_reg[255:128] ^ {64'h0, counter_reg[63:0]},
-            key_reg[127:0]   ^ {64'h0, counter_reg[127:64]}
+            latched_key[255:128] ^ {64'h0, ctr},
+            latched_key[127:0]   ^ {64'h0, iv},
+            latched_key[255:128] ^ {64'h0, counter_reg[63:0]},
+            latched_key[127:0]   ^ {64'h0, counter_reg[127:64]}
         };
-        // make keystream available next cycle
         data_out_valid <= 1'b1;
+        request_pending <= 1'b0;
         ready <= 1'b1;
       end
     end

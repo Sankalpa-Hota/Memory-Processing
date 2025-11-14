@@ -1,7 +1,6 @@
-
 `timescale 1ns/1ps
 
-module chacha20_poly1305_opt(
+module chacha20_poly1305_bus (
     input wire clk,
     input wire reset_n,
 
@@ -40,7 +39,6 @@ wire [127:0] core_tag;
 assign core_key = {key_reg[0], key_reg[1], key_reg[2], key_reg[3],
                    key_reg[4], key_reg[5], key_reg[6], key_reg[7]};
 
-// nonce_reg[0] = lowest word, [1] mid, [2] top -> assemble into 96-bit
 assign core_nonce = {nonce_reg[2], nonce_reg[1], nonce_reg[0]};
 
 assign core_data_in = {data_reg[0], data_reg[1], data_reg[2], data_reg[3],
@@ -103,7 +101,6 @@ always @(negedge clk) begin
                 if ((address >= 8'h10) && (address <= 8'h17)) tmp_read_data <= key_reg[address[2:0]];
                 else if ((address >= 8'h20) && (address <= 8'h22)) tmp_read_data <= nonce_reg[address[1:0]];
                 else if ((address >= 8'h30) && (address <= 8'h3f)) begin
-                    // core_data_out has 16 words, slice accordingly
                     tmp_read_data <= core_data_out[(15-(address-8'h30))*32 +:32];
                 end else if ((address >= 8'h40) && (address <= 8'h43)) begin
                     tmp_read_data <= core_tag[(3-(address-8'h40))*32 +:32];
@@ -133,4 +130,3 @@ always @* begin
 end
 
 endmodule
-
