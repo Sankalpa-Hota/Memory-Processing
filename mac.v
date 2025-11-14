@@ -1,3 +1,5 @@
+// mulacc2_opt.v
+// Simple multiply-accumulate helper (32x32 -> 64, accumulate to 65-bit psum).
 module mulacc2_opt(
     input  wire          clk,
     input  wire          reset_n,
@@ -13,35 +15,37 @@ module mulacc2_opt(
     reg [31:0] b_reg;
 
   // Pipeline stage for multiplication (reduces critical path)
-    reg [64:0] mult_reg;
+    reg [63:0] mult_reg;
 
-  // Accumulator register
+  // Accumulator register (65 bits to allow carry)
     reg [64:0] psum_reg;
-    assign psum = psum_reg; 
+    assign psum = psum_reg;
 
   //----------------------------------------------------------------
   // Register update: hold inputs and pipeline multiplier
   //---------------------------------------------------------------
-    always @(posedge clk) begin
+    always @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
-          a_reg    <= 31'd0;
-          b_reg    <= 31'd0;
+          a_reg    <= 32'd0;
+          b_reg    <= 32'd0;
           mult_reg <= 64'd0;
-          psum_reg <= 64'd0;
+          psum_reg <= 65'd0;
         end else begin
+          // capture inputs
           a_reg <= a;
           b_reg <= b;
 
-      // Pipeline multiplication
-          mult_reg <= a_reg * b_reg;
+          // Pipeline multiplication: using registered operands from previous cycle
+          mult_reg <= a_reg * b_reg; // 32x32 => 64 bits
 
-      // Accumulator with clear and next controls
+          // Accumulator with clear and next controls
           if (clear)
-            psum_reg <= 64'd0;        // Clear: reset sum
+            psum_reg <= 65'd0;        // Clear: reset sum
           else if (next)
-            psum_reg <= psum_reg + mult_reg; // Accumulate pipelined result
-          // No action if next=0, saves unnecessary toggling
+            psum_reg <= psum_reg + {1'b0, mult_reg}; // extend product to 65 bits
+          else
+            psum_reg <= psum_reg; // hold
         end
-      end
+    end
 
 endmodule
