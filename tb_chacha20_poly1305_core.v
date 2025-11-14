@@ -13,6 +13,10 @@ module tb_chacha20_poly1305_core;
 
     reg [511:0] data_blocks [0:1];
 
+    // Verilog-2001 compatible: timeout declared here
+    integer timeout;
+
+    // Clock
     initial clk = 0;
     always #5 clk = ~clk;
 
@@ -33,6 +37,7 @@ module tb_chacha20_poly1305_core;
         .tag(tag)
     );
 
+    // VCD dump
     initial begin
         $dumpfile("tb_chacha20_poly1305_core.vcd");
         $dumpvars(0, tb_chacha20_poly1305_core);
@@ -63,7 +68,6 @@ module tb_chacha20_poly1305_core;
             next = 1; @(posedge clk); next = 0;
 
             // Wait for valid with timeout
-            integer timeout;
             timeout = 0;
             while(!valid && timeout < 50000) begin
                 @(posedge clk);
@@ -78,7 +82,7 @@ module tb_chacha20_poly1305_core;
             @(posedge clk);
             done = 1; @(posedge clk); done = 0;
 
-            // Wait for tag
+            // Wait for tag with timeout
             timeout = 0;
             while(!tag_ok && timeout < 50000) begin
                 @(posedge clk);
@@ -95,4 +99,3 @@ module tb_chacha20_poly1305_core;
         #20 $finish;
     end
 endmodule
-
