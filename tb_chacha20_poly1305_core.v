@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 module tb_chacha20_poly1305_core;
-    reg clk, rst, init, next, done, encdec;
+    reg clk, rst, init, next, encdec;
     reg [255:0] key;
     reg [95:0] nonce;
     reg [511:0] data_in;
@@ -14,15 +14,16 @@ module tb_chacha20_poly1305_core;
     reg [511:0] data_blocks [0:1];
     reg waiting_valid, waiting_tag;
 
+    // Clock generation: 100MHz
     initial clk = 0;
-    always #5 clk = ~clk; // 100MHz clock
+    always #5 clk = ~clk;
 
+    // Instantiate DUT
     chacha20_poly1305_core dut(
         .clk(clk),
         .reset_n(rst),
         .init(init),
         .next(next),
-        .done(done),
         .encdec(encdec),
         .key(key),
         .nonce(nonce),
@@ -34,6 +35,7 @@ module tb_chacha20_poly1305_core;
         .tag(tag)
     );
 
+    // Dump waveforms
     initial begin
         $dumpfile("tb_chacha20_poly1305_core.vcd");
         $dumpvars(0, tb_chacha20_poly1305_core);
@@ -48,31 +50,28 @@ module tb_chacha20_poly1305_core;
         data_blocks[1] = {8{64'h0123456789abcdef}};
 
         // Reset & config
-        rst = 0; init = 0; next = 0; done = 0; encdec = 1;
+        rst = 0; init = 0; next = 0; encdec = 1;
         key = 256'h0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;
         nonce = {32'h11111111,32'h22222222,32'h33333333};
 
         #20 rst = 1;
         $display("[Cycle %0d] RESET released", cycle_count);
 
+        // Process each data block
         for (data_idx = 0; data_idx < 2; data_idx = data_idx + 1) begin
             data_in = data_blocks[data_idx];
             $display("[Cycle %0d] DATA_BLOCK %0d loaded, data_in = %h", cycle_count, data_idx, data_in);
 
-            // INIT
+            // Start encryption
             init = 1; @(posedge clk); init = 0;
             $display("[Cycle %0d] INIT asserted for DATA_BLOCK %0d", cycle_count, data_idx);
-
-            // NEXT
-            next = 1; @(posedge clk); next = 0;
-            $display("[Cycle %0d] NEXT asserted for DATA_BLOCK %0d", cycle_count, data_idx);
 
             // Wait for valid output
             waiting_valid = 1;
             while (waiting_valid) begin
                 @(posedge clk);
                 if (valid) begin
-                    $display("[Cycle %0d] VALID data_out received for DATA_BLOCK %0d: %h", cycle_count, data_idx, data_out);
+                    $display("[Cycle %0d] VALID data_out for DATA_BLOCK %0d: %h", cycle_count, data_idx, data_out);
                     waiting_valid = 0;
                 end
             end
@@ -82,14 +81,11 @@ module tb_chacha20_poly1305_core;
             while (waiting_tag) begin
                 @(posedge clk);
                 if (tag_ok) begin
-                    $display("[Cycle %0d] TAG computed for DATA_BLOCK %0d: %h", cycle_count, data_idx, tag);
+                    $display("[Cycle %0d] TAG for DATA_BLOCK %0d: %h", cycle_count, data_idx, tag);
                     waiting_tag = 0;
                 end
             end
 
-            // DONE
-            done = 1; @(posedge clk); done = 0;
-            $display("[Cycle %0d] DONE asserted for DATA_BLOCK %0d", cycle_count, data_idx);
             $display("------------------------------------------------------");
         end
 
