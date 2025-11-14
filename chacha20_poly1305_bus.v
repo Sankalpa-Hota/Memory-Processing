@@ -6,7 +6,7 @@ module chacha20_poly1305_bus (
     input  wire        cs,
     input  wire        we,
     input  wire [7:0]  address,
-    input  wire [511:0] write_data,  // full 512-bit data block
+    input  wire [511:0] write_data,   // full 512-bit block
     output reg  [511:0] read_data
 );
 
@@ -19,10 +19,7 @@ module chacha20_poly1305_bus (
     reg [31:0] nonce_reg [0:2];
     reg [31:0] data_reg [0:15]; // 512-bit block
 
-    // Pipelined read
-    reg [511:0] tmp_read_data;
-
-    // Core connections
+    // Core wires
     wire core_ready, core_valid, core_tag_ok;
     wire [255:0] core_key;
     wire [95:0] core_nonce;
@@ -58,17 +55,16 @@ module chacha20_poly1305_bus (
     integer i;
 
     // -------------------------
-    // WRITE LOGIC (posedge clk)
+    // WRITE LOGIC
     // -------------------------
     always @(posedge clk or negedge reset_n) begin
-        if (!reset_n) begin
-            init_reg <= 0; next_reg <= 0; done_reg <= 0;
-            encdec_reg <= 0;
-            for (i=0; i<8; i=i+1) key_reg[i] <= 32'h0;
-            for (i=0; i<3; i=i+1) nonce_reg[i] <= 32'h0;
-            for (i=0; i<16; i=i+1) data_reg[i] <= 32'h0;
-        end else if (cs && we) begin
-            case (address)
+        if(!reset_n) begin
+            init_reg <= 0; next_reg <= 0; done_reg <= 0; encdec_reg <= 0;
+            for(i=0;i<8;i=i+1) key_reg[i] <= 32'h0;
+            for(i=0;i<3;i=i+1) nonce_reg[i] <= 32'h0;
+            for(i=0;i<16;i=i+1) data_reg[i] <= 32'h0;
+        end else if(cs && we) begin
+            case(address)
                 8'h08: begin
                     init_reg <= write_data[0];
                     next_reg <= write_data[1];
@@ -80,31 +76,28 @@ module chacha20_poly1305_bus (
                 8'h20,8'h21,8'h22:
                     nonce_reg[address[1:0]] <= write_data[31:0];
                 8'h30: begin
-                    // Write full 512-bit block in one cycle
-                    for (i=0; i<16; i=i+1) data_reg[i] <= write_data[(15-i)*32 +:32];
+                    for(i=0;i<16;i=i+1)
+                        data_reg[i] <= write_data[(15-i)*32 +:32];
                 end
             endcase
         end
     end
 
     // -------------------------
-    // READ LOGIC (posedge clk)
+    // READ LOGIC
     // -------------------------
     always @(posedge clk or negedge reset_n) begin
-        if (!reset_n) begin
-            tmp_read_data <= 512'h0;
+        if(!reset_n) begin
             read_data <= 512'h0;
-        end else if (cs && !we) begin
-            case (address)
-                8'h00: tmp_read_data <= 512'h6332307031333035302e3031; // "c20p13050.01"
-                8'h09: tmp_read_data <= {509'h0, core_tag_ok, core_valid, core_ready};
-                8'h0a: tmp_read_data <= {511'h0, encdec_reg};
-                8'h30: tmp_read_data <= core_data_out;  // full 512-bit output
-                8'h40: tmp_read_data <= {384'h0, core_tag}; // 128-bit tag padded
-                default: tmp_read_data <= 512'h0;
+        end else if(cs && !we) begin
+            case(address)
+                8'h00: read_data <= 512'h6332307031333035302e3031; // "c20p13050.01"
+                8'h09: read_data <= {509'h0, core_tag_ok, core_valid, core_ready};
+                8'h0a: read_data <= {511'h0, encdec_reg};
+                8'h30: read_data <= core_data_out; // full 512-bit output
+                8'h40: read_data <= {384'h0, core_tag}; // 128-bit tag padded
+                default: read_data <= 512'h0;
             endcase
-            read_data <= tmp_read_data;
         end
     end
-
 endmodule
