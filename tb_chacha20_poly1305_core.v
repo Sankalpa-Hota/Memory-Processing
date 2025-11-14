@@ -35,7 +35,8 @@ module tb_chacha20_poly1305_core;
         rst=0; init=0; next=0; done=0; encdec=1;
         key = 256'h0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;
         nonce = {32'h11111111,32'h22222222,32'h33333333};
-        data_in = {16{32'hcafebabedeadbeef}};
+        data_in = {8{64'hcafebabedeadbeef}}; // 8 × 64 = 512 bits
+
 
         #20 rst=1;
         $display("[Cycle %0d] RESET released", cycle_count);
