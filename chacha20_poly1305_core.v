@@ -15,7 +15,6 @@ module chacha20_poly1305_core(
     output wire [511:0] data_out,
     output wire [127:0] tag
 );
-
     reg [127:0] r_reg, s_reg;
     reg [129:0] acc_reg;
 
@@ -36,11 +35,13 @@ module chacha20_poly1305_core(
         .data_out(chacha_data_out)
     );
 
-    reg mul_start;
+    reg mul_start, red_start;
     reg [129:0] mul_a;
     reg [127:0] mul_b;
     wire [257:0] mul_product;
     wire mul_done;
+    wire [129:0] red_out;
+    wire red_done;
 
     mult_130x128_limb mult_inst(
         .clk(clk),
@@ -52,10 +53,6 @@ module chacha20_poly1305_core(
         .busy(),
         .done(mul_done)
     );
-
-    reg red_start;
-    wire [129:0] red_out;
-    wire red_done;
 
     reduce_mod_poly1305 red_inst(
         .clk(clk),
@@ -69,29 +66,25 @@ module chacha20_poly1305_core(
 
     always @(posedge clk or negedge reset_n) begin
         if(!reset_n) begin
-            r_reg <= 0; s_reg <= 0; acc_reg <= 0;
-            ready <= 1; valid <= 0; tag_ok <= 0;
-            mul_start <= 0; red_start <= 0;
+            r_reg <=0; s_reg<=0; acc_reg<=0;
+            ready <=1; valid<=0; tag_ok<=0;
+            mul_start <=0; red_start<=0;
         end else begin
-            valid <= 0; tag_ok <= 0;
-
+            valid <=0; tag_ok <=0;
             if(chacha_valid) begin
                 r_reg <= chacha_data_out[127:0];
                 s_reg <= chacha_data_out[255:128];
                 mul_a <= {2'b0, acc_reg} + {2'b0, data_in[127:0]};
                 mul_b <= r_reg;
-                mul_start <= 1;
+                mul_start <=1;
             end
-
             if(mul_done) begin
-                mul_start <= 0; red_start <= 1;
+                mul_start <=0; red_start <=1;
             end
-
             if(red_done) begin
-                acc_reg <= red_out; red_start <= 0; valid <= 1;
+                acc_reg <= red_out; red_start <=0; valid <=1;
             end
-
-            if(done) tag_ok <= 1;
+            if(done) tag_ok <=1;
         end
     end
 
