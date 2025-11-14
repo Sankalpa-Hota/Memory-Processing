@@ -23,7 +23,9 @@ module mult_130x128_limb #(
     reg [257:0] acc;
     reg [7:0] partial_idx;
 
-    integer i,j;
+    integer i, j;
+    integer hi; // moved to module scope
+    integer ai, bj; // moved to module scope
     reg [31:0] pp;
     reg [257:0] shifted_pp;
 
@@ -45,7 +47,7 @@ module mult_130x128_limb #(
                     if((i*LIMB)+LIMB-1 < A_BITS)
                         a_limbs[i] <= a_in[i*LIMB +: LIMB];
                     else begin
-                        integer hi; hi = A_BITS - i*LIMB;
+                        hi = A_BITS - i*LIMB;
                         a_limbs[i] <= (hi>0) ? { {(LIMB-hi){1'b0}}, a_in[i*LIMB +: hi] } : 0;
                     end
                 end
@@ -53,7 +55,7 @@ module mult_130x128_limb #(
                     if((i*LIMB)+LIMB-1 < B_BITS)
                         b_limbs[i] <= b_in[i*LIMB +: LIMB];
                     else begin
-                        integer hi; hi = B_BITS - i*LIMB;
+                        hi = B_BITS - i*LIMB;
                         b_limbs[i] <= (hi>0) ? { {(LIMB-hi){1'b0}}, b_in[i*LIMB +: hi] } : 0;
                     end
                 end
@@ -61,7 +63,6 @@ module mult_130x128_limb #(
                 partial_idx <= 0;
                 busy <= 1;
             end else if(busy) begin
-                integer ai,bj;
                 for(i=0;i<PAR_PER_CYCLE;i=i+1) begin
                     if(partial_idx<TOTAL_PARTIALS) begin
                         ai = partial_idx / B_LIMBS;
@@ -82,3 +83,4 @@ module mult_130x128_limb #(
     end
 
 endmodule
+
