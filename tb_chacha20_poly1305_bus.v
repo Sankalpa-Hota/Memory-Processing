@@ -1,6 +1,6 @@
 //top wrapper bus test
 `timescale 1ns/1ps
-module tb_chacha20_poly1305_opt;
+module tb_chacha20_poly1305_bus;
   reg clk, rst;
   reg cs, we;
   reg [7:0] addr;
@@ -9,7 +9,7 @@ module tb_chacha20_poly1305_opt;
 
   initial begin clk=0; forever #5 clk=~clk; end
 
-  chacha20_poly1305_opt top (
+  chacha20_poly1305_bus top (
     .clk(clk), .reset_n(rst), .cs(cs), .we(we), .address(addr),
     .write_data(wdata), .read_data(rdata)
   );
@@ -56,7 +56,8 @@ module tb_chacha20_poly1305_opt;
     // Trigger init/next/done at 0x08 control register (bits [2:0])
     bus_write(8'h08, 32'h1); // init=1
     #20 bus_write(8'h08, 32'h2); // next=1 (this simple sequence used for test)
-    #50 bus_write(8'h08, 32'h4); // done=1
+    #300; // wait longer for internal multi-cycle op
+    bus_write(8'h08, 32'h4); // done=1
     #20 bus_read(8'h09); // status
     #20 $finish;
   end
