@@ -8,11 +8,13 @@ module tb_chacha_core;
   wire [511:0] data_out;
   wire data_out_valid;
 
+  // clock
   initial begin
     clk = 0;
     forever #5 clk = ~clk;
   end
 
+  // DUT
   chacha_core u (
     .clk(clk), .reset_n(rst),
     .init(init), .next(next),
@@ -21,6 +23,12 @@ module tb_chacha_core;
     .rounds(5'h14), .data_in(512'h0),
     .ready(ready), .data_out(data_out), .data_out_valid(data_out_valid)
   );
+
+  // VCD dump
+  initial begin
+    $dumpfile("tb_chacha_core.vcd");
+    $dumpvars(0, tb_chacha_core);
+  end
 
   initial begin
     rst = 0; init = 0; next = 0;
