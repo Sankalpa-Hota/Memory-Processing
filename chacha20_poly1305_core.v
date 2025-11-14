@@ -20,12 +20,15 @@ module chacha20_poly1305_core(
 
     wire [511:0] chacha_data_out;
     wire chacha_ready, chacha_valid;
+    wire block_done;
+    reg chacha_start;
 
+    // instantiate chacha_core (which uses chacha_block)
     chacha_core cha_inst(
         .clk(clk),
         .reset_n(reset_n),
-        .init(init),
-        .next(next),
+        .init(chacha_start),
+        .next(1'b0),
         .key(key),
         .ctr({32'h0, nonce[31:0]}),
         .iv(nonce[95:32]),
@@ -35,6 +38,7 @@ module chacha20_poly1305_core(
         .data_out(chacha_data_out)
     );
 
+    // multiplier and reducer
     reg mul_start, red_start;
     reg [129:0] mul_a;
     reg [127:0] mul_b;
@@ -64,27 +68,67 @@ module chacha20_poly1305_core(
         .done(red_done)
     );
 
+    // capture rising edge of chacha_valid (one-cycle)
+    reg chacha_valid_d;
+    wire chacha_valid_rise;
+    always @(posedge clk or negedge reset_n) begin
+        if(!reset_n) chacha_valid_d <= 1'b0;
+        else chacha_valid_d <= chacha_valid;
+    end
+    assign chacha_valid_rise = chacha_valid & ~chacha_valid_d;
+
+    // main control
     always @(posedge clk or negedge reset_n) begin
         if(!reset_n) begin
-            r_reg <=0; s_reg<=0; acc_reg<=0;
-            ready <=1; valid<=0; tag_ok<=0;
-            mul_start <=0; red_start<=0;
+            ready <= 1'b1;
+            valid <= 1'b0;
+            tag_ok <= 1'b0;
+            chacha_start <= 1'b0;
+            mul_start <= 1'b0;
+            red_start <= 1'b0;
+            r_reg <= 128'b0;
+            s_reg <= 128'b0;
+            acc_reg <= 130'b0;
+            mul_a <= 130'b0;
+            mul_b <= 128'b0;
         end else begin
-            valid <=0; tag_ok <=0;
-            if(chacha_valid) begin
+            // default single-cycle deasserts
+            valid <= 1'b0;
+            tag_ok <= 1'b0;
+            chacha_start <= 1'b0;
+            mul_start <= 1'b0;
+            red_start <= 1'b0;
+
+            if(init && ready) begin
+                // start ChaCha generation for this block
+                chacha_start <= 1'b1;
+                ready <= 1'b0;
+            end
+
+            // when ChaCha data is ready, chacha_valid_rise pulses
+            if(chacha_valid_rise) begin
+                // capture r and s
                 r_reg <= chacha_data_out[127:0];
                 s_reg <= chacha_data_out[255:128];
+                // prepare multiply: (acc + data_low) * r
                 mul_a <= {2'b0, acc_reg} + {2'b0, data_in[127:0]};
-                mul_b <= r_reg;
-                mul_start <=1;
+                mul_b <= chacha_data_out[127:0];
+                mul_start <= 1'b1;
             end
+
             if(mul_done) begin
-                mul_start <=0; red_start <=1;
+                red_start <= 1'b1;
             end
+
             if(red_done) begin
-                acc_reg <= red_out; red_start <=0; valid <=1;
+                acc_reg <= red_out;
+                valid <= 1'b1; // accumulator updated
+                ready <= 1'b1; // ready for next block
             end
-            if(done) tag_ok <=1;
+
+            if(done) begin
+                tag_ok <= 1'b1;
+            end
         end
     end
 
