@@ -9,12 +9,10 @@ module reduce_mod_poly1305(
     output reg done
 );
     reg [257:0] val_reg;
-    reg state;
-
-    // Intermediate vars must be module-level in Verilog-2001
     reg [129:0] lo;
     reg [127:0] hi;
-    reg [130:0] tmp; // allow overflow
+    reg [130:0] tmp;
+    reg state;
 
     always @(posedge clk or negedge reset_n) begin
         if(!reset_n) begin
@@ -36,11 +34,10 @@ module reduce_mod_poly1305(
                 lo = val_reg[129:0];
                 hi = val_reg[257:130];
                 tmp = lo + (hi * 5);
-                if (tmp >= (1'b1 << 130)) begin
+                if(tmp >= (1'b1 << 130))
                     value_out <= tmp - (1'b1 << 130) + 5;
-                end else begin
+                else
                     value_out <= tmp[129:0];
-                end
                 busy <= 1'b0;
                 done <= 1'b1;
                 state <= 1'b0;
@@ -48,4 +45,3 @@ module reduce_mod_poly1305(
         end
     end
 endmodule
-
