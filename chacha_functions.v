@@ -1,3 +1,5 @@
+//Just for understanding the math behind Chacha not for use
+
 `timescale 1ns/1ps
 module chacha_functions;
     function [127:0] quarterround;
