@@ -1,59 +1,53 @@
-// chacha_core.v -- corrected behavioral stub
-// Produces deterministic 512-bit "keystream" block one cycle after init/next is asserted.
-
-module chacha_core (
-    input  wire         clk,
-    input  wire         reset_n,
-    input  wire         init,
-    input  wire         next,
-    input  wire         keylen,        // ignored in stub
+// ChaCha20 core: generates 512-bit keystream
+module chacha_core(
+    input  wire clk,
+    input  wire reset_n,
+    input  wire init,
+    input  wire next,
     input  wire [255:0] key,
-    input  wire [63:0]  ctr,           // lower 64 bits from wrapper
-    input  wire [63:0]  iv,            // upper 64 bits (we pass nonce pieces)
-    input  wire [4:0]   rounds,        // ignored in stub
-    input  wire [511:0] data_in,       // optional - passed through if desired
-
-    output reg          ready,
-    output reg [511:0]  data_out,
-    output reg          data_out_valid
+    input  wire [63:0] ctr,
+    input  wire [63:0] iv,
+    input  wire [511:0] data_in, // plaintext to encrypt
+    output reg  ready,
+    output reg  data_out_valid,
+    output reg [511:0] data_out
 );
+    reg [511:0] state;
+    reg request_pending;
 
-  // internal registers
-  reg [255:0] latched_key;
-  reg [127:0] counter_reg;
-  reg request_pending;
+    wire [511:0] chacha_out;
 
-  always @(posedge clk or negedge reset_n) begin
-    if (!reset_n) begin
-      latched_key <= 256'h0;
-      counter_reg <= 128'h0;
-      ready <= 1'b1;
-      data_out <= 512'h0;
-      data_out_valid <= 1'b0;
-      request_pending <= 1'b0;
-    end else begin
-      // default deassert
-      data_out_valid <= 1'b0;
+    // Initial 512-bit state: constants + key + counter + nonce
+    wire [511:0] init_state = {
+        32'h61707865,32'h3320646e,32'h79622d32,32'h6b206574, // constants
+        key[255:224], key[223:192], key[191:160], key[159:128],
+        key[127:96], key[95:64], key[63:32], key[31:0],
+        ctr, iv
+    };
 
-      // accept request (init or next) when ready
-      if ((init || next) && ready) begin
-        latched_key <= key;
-        counter_reg <= counter_reg + 1;
-        request_pending <= 1'b1;
-        ready <= 1'b0;
-      end else if (request_pending) begin
-        // produce keystream one cycle after request
-        data_out <= {
-            latched_key[255:128] ^ {64'h0, ctr},
-            latched_key[127:0]   ^ {64'h0, iv},
-            latched_key[255:128] ^ {64'h0, counter_reg[63:0]},
-            latched_key[127:0]   ^ {64'h0, counter_reg[127:64]}
-        };
-        data_out_valid <= 1'b1;
-        request_pending <= 1'b0;
-        ready <= 1'b1;
-      end
+    chacha_block BLOCK(.state_in(state), .state_out(chacha_out));
+
+    always @(posedge clk or negedge reset_n) begin
+        if(!reset_n) begin
+            state <= 512'h0;
+            ready <= 1'b1;
+            data_out_valid <= 0;
+            request_pending <= 0;
+            data_out <= 512'h0;
+        end else begin
+            data_out_valid <= 0;
+
+            if((init || next) && ready) begin
+                state <= init_state;
+                request_pending <= 1'b1;
+                ready <= 0;
+            end else if(request_pending) begin
+                // XOR plaintext with keystream to produce ciphertext
+                data_out <= data_in ^ chacha_out;
+                data_out_valid <= 1'b1;
+                request_pending <= 0;
+                ready <= 1'b1;
+            end
+        end
     end
-  end
-
 endmodule
