@@ -28,7 +28,7 @@ module chacha_core(
     always @(posedge clk or negedge reset_n) begin
         if(!reset_n) begin
             state <= 512'h0;
-            ready <= 1'b1;
+            ready <= 1;
             data_out_valid <= 0;
             request_pending <= 0;
             data_out <= 512'h0;
@@ -36,13 +36,13 @@ module chacha_core(
             data_out_valid <= 0;
             if((init || next) && ready) begin
                 state <= init_state;
-                request_pending <= 1'b1;
+                request_pending <= 1;
                 ready <= 0;
             end else if(request_pending) begin
                 data_out <= data_in ^ chacha_out;
-                data_out_valid <= 1'b1;
+                data_out_valid <= 1;
                 request_pending <= 0;
-                ready <= 1'b1;
+                ready <= 1;
             end
         end
     end
