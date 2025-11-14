@@ -5,11 +5,10 @@ module tb_chacha20_poly1305_bus;
     reg [511:0] wdata;
     wire [511:0] rdata;
 
-    integer cycle_count;
-    integer blk;
-
-    reg [511:0] data_input0, data_input1;
+    integer cycle_count, blk, ds;
+    reg [511:0] data_inputs[0:9];
     reg waiting;
+    reg [511:0] read_val;
 
     initial clk = 0;
     always #5 clk = ~clk;
@@ -32,30 +31,29 @@ module tb_chacha20_poly1305_bus;
     initial cycle_count = 0;
     always @(posedge clk) cycle_count = cycle_count + 1;
 
-    // Tasks
+    // Bus write task
     task bus_write(input [7:0] a, input [511:0] v);
     begin
         @(posedge clk); cs=1; we=1; addr=a; wdata=v;
         @(posedge clk); cs=0; we=0;
-        $display("[Cycle %0d] WRITE addr=%02h, data=%h", cycle_count, a, v);
     end
     endtask
 
+    // Bus read task
     task bus_read(input [7:0] a, output [511:0] r);
     begin
         @(posedge clk); cs=1; we=0; addr=a;
         @(posedge clk); cs=0;
         r = rdata;
-        $display("[Cycle %0d] READ addr=%02h, data=%h", cycle_count, a, r);
     end
     endtask
 
-    reg [511:0] read_val;
     initial begin
-        rst = 0; cs = 0; we = 0; addr = 0; wdata = 0;
+        rst = 0; cs=0; we=0; addr=0; wdata=0;
 
-        data_input0 = {16{32'hdeadbeef}};
-        data_input1 = {16{32'hcafebabe}};
+        // Generate 10 datasets
+        for(ds=0; ds<10; ds=ds+1)
+            data_inputs[ds] = {16{32'h1000 + ds}};
 
         #20 rst = 1;
         $display("[Cycle %0d] RESET released", cycle_count);
@@ -75,10 +73,9 @@ module tb_chacha20_poly1305_bus;
         bus_write(8'h21, 32'h22222222);
         bus_write(8'h22, 32'h33333333);
 
-        // Process 2 data blocks
-        for (blk = 0; blk < 2; blk = blk + 1) begin
-            if(blk==0) bus_write(8'h30, data_input0);
-            else      bus_write(8'h30, data_input1);
+        // Process 10 datasets
+        for(blk=0; blk<10; blk=blk+1) begin
+            bus_write(8'h30, data_inputs[blk]);
 
             // INIT
             bus_write(8'h08, 512'h1);
@@ -86,36 +83,33 @@ module tb_chacha20_poly1305_bus;
             // NEXT
             bus_write(8'h08, 512'h2);
 
-            // Wait for valid output
+            // wait for valid output
             waiting = 1;
-            while (waiting) begin
+            while(waiting) begin
                 bus_read(8'h09, read_val);
                 if(read_val[1]) begin
                     bus_read(8'h30, read_val);
-                    $display("[Cycle %0d] VALID output for block %0d: %h", cycle_count, blk, read_val);
+                    $display("[Cycle %0d] VALID output block %0d: %h", cycle_count, blk, read_val);
                     waiting = 0;
                 end
             end
 
-            // Wait for tag
+            // wait for tag
             waiting = 1;
-            while (waiting) begin
+            while(waiting) begin
                 bus_read(8'h09, read_val);
                 if(read_val[2]) begin
                     bus_read(8'h40, read_val);
-                    $display("[Cycle %0d] TAG computed for block %0d: %h", cycle_count, blk, read_val);
+                    $display("[Cycle %0d] TAG block %0d: %h", cycle_count, blk, read_val);
                     waiting = 0;
                 end
             end
 
-            // DONE
-            bus_write(8'h08, 512'h4);
             $display("Block %0d processing done. Total cycles so far: %0d\n", blk, cycle_count);
         end
 
-        $display("Total simulation cycles for 2 data blocks = %0d", cycle_count);
+        $display("Total simulation cycles for 10 blocks = %0d", cycle_count);
         #20 $finish;
     end
 endmodule
-
 
