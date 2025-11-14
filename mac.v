@@ -1,6 +1,6 @@
-// mulacc2_opt.v
+// mac.v
 // Simple multiply-accumulate helper (32x32 -> 64, accumulate to 65-bit psum).
-module mulacc2_opt(
+module mac(
     input  wire          clk,
     input  wire          reset_n,
     input  wire          clear,
