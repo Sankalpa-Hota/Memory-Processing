@@ -1,6 +1,5 @@
 // chacha20_poly1305_core.v
 // Fully integrated ChaCha20 + Poly1305 using multiplier + reducer
-
 module chacha20_poly1305_core(
     input  wire clk,
     input  wire reset_n,
@@ -18,7 +17,6 @@ module chacha20_poly1305_core(
     output wire [127:0] tag
 );
 
-    // Internal registers
     reg [127:0] r_reg, s_reg;
     reg [129:0] acc_reg;
 
@@ -26,7 +24,7 @@ module chacha20_poly1305_core(
     wire chacha_ready, chacha_valid;
 
     // ChaCha20 core instance
-    chacha_core CHA(
+    chacha_core cha_inst(
         .clk(clk),
         .reset_n(reset_n),
         .init(init),
@@ -39,14 +37,14 @@ module chacha20_poly1305_core(
         .data_out(chacha_data_out)
     );
 
-    // Multiplier instance
+    // Multiplier
     reg mul_start;
     reg [129:0] mul_a;
     reg [127:0] mul_b;
     wire [257:0] mul_product;
     wire mul_done;
 
-    mult_130x128_limb MUL(
+    mult_130x128_limb mult_inst(
         .clk(clk),
         .reset_n(reset_n),
         .start(mul_start),
@@ -57,12 +55,12 @@ module chacha20_poly1305_core(
         .done(mul_done)
     );
 
-    // Reducer instance
+    // Reducer
     reg red_start;
     wire [129:0] red_out;
     wire red_done;
 
-    reduce_mod_poly1305 RED(
+    reduce_mod_poly1305 red_inst(
         .clk(clk),
         .reset_n(reset_n),
         .start(red_start),
@@ -72,66 +70,42 @@ module chacha20_poly1305_core(
         .done(red_done)
     );
 
-    // FSM states
-    reg [1:0] state;
-    localparam IDLE = 2'd0,
-               MUL  = 2'd1,
-               RED  = 2'd2,
-               DONE = 2'd3;
-
     always @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
-            r_reg      <= 128'h0;
-            s_reg      <= 128'h0;
-            acc_reg    <= 130'h0;
-            ready      <= 1'b1;
-            valid      <= 1'b0;
-            tag_ok     <= 1'b0;
-            mul_start  <= 1'b0;
-            red_start  <= 1'b0;
-            state      <= IDLE;
+            r_reg <= 128'h0;
+            s_reg <= 128'h0;
+            acc_reg <= 130'h0;
+            ready <= 1'b1;
+            valid <= 1'b0;
+            tag_ok <= 1'b0;
+            mul_start <= 1'b0;
+            red_start <= 1'b0;
         end else begin
             valid <= 1'b0;
-            case (state)
-                IDLE: begin
-                    ready <= 1'b1;
-                    if (chacha_valid) begin
-                        r_reg <= chacha_data_out[127:0];
-                        s_reg <= chacha_data_out[255:128];
+            tag_ok <= 1'b0;
 
-                        // Prepare Poly1305 multiply
-                        mul_a <= {2'b0, acc_reg[127:0]} + {2'b0, data_in[127:0]}; // 130-bit
-                        mul_b <= r_reg; // 128-bit
-                        mul_start <= 1'b1;
-                        state <= MUL;
-                        ready <= 1'b0;
-                    end
-                end
+            if (chacha_valid) begin
+                r_reg <= chacha_data_out[127:0];
+                s_reg <= chacha_data_out[255:128];
+                mul_a <= {2'b0, acc_reg} + {2'b0, data_in[127:0]};
+                mul_b <= r_reg;
+                mul_start <= 1'b1;
+            end
 
-                MUL: begin
-                    mul_start <= 1'b0;
-                    if (mul_done) begin
-                        red_start <= 1'b1;
-                        state <= RED;
-                    end
-                end
+            if (mul_done) begin
+                mul_start <= 1'b0;
+                red_start <= 1'b1;
+            end
 
-                RED: begin
-                    red_start <= 1'b0;
-                    if (red_done) begin
-                        acc_reg <= red_out;
-                        valid <= 1'b1;
-                        state <= IDLE;
-                    end
-                end
+            if (red_done) begin
+                acc_reg <= red_out;
+                red_start <= 1'b0;
+                valid <= 1'b1;
+            end
 
-                DONE: begin
-                    tag_ok <= 1'b1;
-                end
-            endcase
-
-            if (done) state <= DONE;
-            if (state == DONE) tag_ok <= 1'b1;
+            if (done) begin
+                tag_ok <= 1'b1;
+            end
         end
     end
 
@@ -139,5 +113,3 @@ module chacha20_poly1305_core(
     assign tag = acc_reg[127:0] + s_reg;
 
 endmodule
-
-
