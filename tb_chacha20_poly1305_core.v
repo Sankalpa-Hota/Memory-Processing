@@ -10,15 +10,22 @@ module tb_chacha20_poly1305_core;
     wire [127:0] tag;
 
     integer global_cycles;
-    integer start_cycle, block_cycles;
+    integer start_cycle;
+    integer block_cycles;
+    integer i;
 
     // clock
-    initial clk = 0; forever #5 clk = ~clk; end
+    initial clk = 0;
+    always #5 clk = ~clk;
 
-    // cycle counter
+    // global cycle counter
     initial global_cycles = 0;
-    always @(posedge clk)
-        if (rst) global_cycles = global_cycles + 1;
+    always @(posedge clk) begin
+        if (!rst)
+            global_cycles = 0;
+        else
+            global_cycles = global_cycles + 1;
+    end
 
     // DUT
     chacha20_poly1305_core dut(
@@ -38,12 +45,13 @@ module tb_chacha20_poly1305_core;
         .tag(tag)
     );
 
-    // waveform dump
+    // VCD dump
     initial begin
         $dumpfile("tb_chacha20_poly1305_core.vcd");
         $dumpvars(0, tb_chacha20_poly1305_core);
     end
 
+    // test procedure
     initial begin
         rst = 0; init = 0; next = 0; done = 0; encdec = 1;
         key = 256'h0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;
@@ -60,21 +68,21 @@ module tb_chacha20_poly1305_core;
         @(posedge clk); next = 0;
         $display("Next asserted at cycle %0d", global_cycles);
 
-        // process 4 blocks
-        integer i;
+        // Wait for all four 128-bit blocks
         for (i = 0; i < 4; i = i + 1) begin
             block_cycles = global_cycles;
             wait(valid == 1);
-            $display("Block %0d processed, cycles = %0d, data_out = %h", i, global_cycles - block_cycles, data_out[127 + i*128 -:128]);
+            $display("Block %0d processed, cycles = %0d, data_out = %h",
+                     i, global_cycles - block_cycles, data_out[127 + i*128 -:128]);
             @(posedge clk);
         end
 
-        // wait for final tag
+        // wait for tag
         wait(tag_ok == 1);
-        $display("Tag computed at cycle %0d, total cycles = %0d", global_cycles, global_cycles - start_cycle);
+        $display("Tag computed at cycle %0d, total cycles = %0d",
+                 global_cycles, global_cycles - start_cycle);
         $display("Tag = %h", tag);
 
         #20 $finish;
     end
 endmodule
-
