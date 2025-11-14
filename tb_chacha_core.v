@@ -62,4 +62,28 @@ module tb_chacha_core;
 
             // INIT pulse
             init = 1; @(posedge clk); init = 0;
-            $display("[Cycle %0d] INIT asserted for bloc
+            $display("[Cycle %0d] INIT asserted for block %0d", cycle_count, blk);
+
+            // NEXT pulse
+            next = 1; @(posedge clk); next = 0;
+            $display("[Cycle %0d] NEXT asserted for block %0d", cycle_count, blk);
+
+            // Wait for valid output
+            waiting = 1;
+            while (waiting) begin
+                @(posedge clk);
+                if (data_out_valid) begin
+                    $display("[Cycle %0d] Data out ready for block %0d: %h", cycle_count, blk, data_out);
+                    waiting = 0;
+                end
+            end
+
+            // Increment counter for next block
+            ctr = ctr + 1;
+        end
+
+        $display("Total simulation cycles for 10 blocks: %0d", cycle_count);
+        #20 $finish;
+    end
+endmodule
+
