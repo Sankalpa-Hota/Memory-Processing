@@ -1,127 +1,103 @@
 `timescale 1ns/1ps
-module tb_chacha20_poly1305_bus;
-    reg clk, rst, cs, we;
-    reg [7:0] addr;
-    reg [511:0] wdata;
-    wire [511:0] rdata;
+module tb_chacha20_poly1305_core;
+    reg clk, rst, init, next, done, encdec;
+    reg [255:0] key;
+    reg [95:0] nonce;
+    reg [511:0] data_in;
+    wire ready, valid, tag_ok;
+    wire [511:0] data_out;
+    wire [127:0] tag;
 
     integer cycle_count;
-    integer blk;
+    integer data_idx;
 
-    reg [511:0] data_input0, data_input1;
+    reg [511:0] data_blocks [0:1];
 
+    // Verilog-2001 compatible: timeout declared here
+    integer timeout;
+
+    // Clock
     initial clk = 0;
     always #5 clk = ~clk;
 
-    chacha20_poly1305_bus dut(
+    chacha20_poly1305_core dut(
         .clk(clk),
         .reset_n(rst),
-        .cs(cs),
-        .we(we),
-        .address(addr),
-        .write_data(wdata),
-        .read_data(rdata)
+        .init(init),
+        .next(next),
+        .done(done),
+        .encdec(encdec),
+        .key(key),
+        .nonce(nonce),
+        .data_in(data_in),
+        .ready(ready),
+        .valid(valid),
+        .tag_ok(tag_ok),
+        .data_out(data_out),
+        .tag(tag)
     );
 
+    // VCD dump
     initial begin
-        $dumpfile("tb_chacha20_poly1305_bus.vcd");
-        $dumpvars(0, tb_chacha20_poly1305_bus);
+        $dumpfile("tb_chacha20_poly1305_core.vcd");
+        $dumpvars(0, tb_chacha20_poly1305_core);
     end
 
     initial cycle_count = 0;
     always @(posedge clk) cycle_count = cycle_count + 1;
 
-    // 32-bit write task
-    task bus_write32(input [7:0] a, input [31:0] v);
-    begin
-        @(posedge clk); cs=1; we=1; addr=a; wdata={480'h0,v};
-        @(posedge clk); cs=0; we=0;
-    end
-    endtask
-
-    // 512-bit write task
-    task bus_write512(input [7:0] a, input [511:0] v);
-    begin
-        @(posedge clk); cs=1; we=1; addr=a; wdata=v;
-        @(posedge clk); cs=0; we=0;
-    end
-    endtask
-
-    // 32-bit read task
-    task bus_read32(input [7:0] a, output [31:0] val);
-    begin
-        @(posedge clk); cs=1; we=0; addr=a;
-        @(posedge clk); cs=0;
-        val = rdata[31:0];
-    end
-    endtask
-
     initial begin
-        rst = 0; cs=0; we=0; addr=0; wdata=0;
+        // 512-bit data blocks
+        data_blocks[0] = {8{64'hcafebabedeadbeef}};
+        data_blocks[1] = {8{64'h0123456789abcdef}};
 
-        data_input0 = {16{32'hdeadbeef}};
-        data_input1 = {16{32'hcafebabe}};
+        // Reset
+        rst = 0; init=0; next=0; done=0; encdec=1;
+        key = 256'h0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;
+        nonce = {32'h11111111,32'h22222222,32'h33333333};
 
         #20 rst = 1;
 
-        // Write key
-        bus_write32(8'h10, 32'h00112233);
-        bus_write32(8'h11, 32'h44556677);
-        bus_write32(8'h12, 32'h8899aabb);
-        bus_write32(8'h13, 32'hccddeeff);
-        bus_write32(8'h14, 32'h01234567);
-        bus_write32(8'h15, 32'h89abcdef);
-        bus_write32(8'h16, 32'hfedcba98);
-        bus_write32(8'h17, 32'h76543210);
+        for(data_idx=0; data_idx<2; data_idx=data_idx+1) begin
+            data_in = data_blocks[data_idx];
 
-        // Write nonce
-        bus_write32(8'h20, 32'h11111111);
-        bus_write32(8'h21, 32'h22222222);
-        bus_write32(8'h22, 32'h33333333);
+            @(posedge clk);
+            init = 1; @(posedge clk); init = 0;
 
-        for(blk=0; blk<2; blk=blk+1) begin
-            if(blk==0) bus_write512(8'h30, data_input0);
-            else      bus_write512(8'h30, data_input1);
+            @(posedge clk);
+            next = 1; @(posedge clk); next = 0;
 
-            // INIT
-            bus_write32(8'h08, 32'h1);
-
-            // NEXT
-            bus_write32(8'h08, 32'h2);
-
-            // Wait for valid
-            integer timeout; timeout=0;
-            while(1) begin
-                bus_read32(8'h09, wdata[31:0]);
-                if(wdata[1]) break;
+            // Wait for valid with timeout
+            timeout = 0;
+            while(!valid && timeout < 50000) begin
                 @(posedge clk);
                 timeout = timeout + 1;
-                if(timeout>50000) begin $display("ERROR: VALID timeout"); $finish; end
             end
+            if(timeout == 50000) begin
+                $display("ERROR: VALID timeout!");
+                $finish;
+            end
+            $display("[Cycle %0d] DATA_BLOCK %0d encrypted: %h", cycle_count, data_idx, data_out);
 
-            // Read data
-            bus_read32(8'h30, wdata[31:0]);
-            $display("[Cycle %0d] VALID output block %0d", cycle_count, blk);
+            @(posedge clk);
+            done = 1; @(posedge clk); done = 0;
 
-            // Wait for tag
-            timeout=0;
-            while(1) begin
-                bus_read32(8'h09, wdata[31:0]);
-                if(wdata[2]) break;
+            // Wait for tag with timeout
+            timeout = 0;
+            while(!tag_ok && timeout < 50000) begin
                 @(posedge clk);
                 timeout = timeout + 1;
-                if(timeout>50000) begin $display("ERROR: TAG timeout"); $finish; end
             end
-
-            bus_read32(8'h40, wdata[31:0]);
-            $display("[Cycle %0d] TAG computed block %0d", cycle_count, blk);
-
-            // DONE
-            bus_write32(8'h08, 32'h4);
+            if(timeout == 50000) begin
+                $display("ERROR: TAG timeout!");
+                $finish;
+            end
+            $display("[Cycle %0d] DATA_BLOCK %0d tag = %h", cycle_count, data_idx, tag);
         end
 
-        $display("Simulation complete. Total cycles = %0d", cycle_count);
+        $display("Simulation done. Total cycles = %0d", cycle_count);
         #20 $finish;
     end
 endmodule
+
 
