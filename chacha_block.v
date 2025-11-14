@@ -1,17 +1,51 @@
-// ChaCha20 block function, 20 rounds
-module chacha_block(
-    input  wire [511:0] state_in,
-    output wire [511:0] state_out
+// chacha_core.v
+// Generates 512-bit keystream block using chacha_block
+module chacha_core(
+    input  wire clk,
+    input  wire reset_n,
+    input  wire init,
+    input  wire next,
+    input  wire [255:0] key,
+    input  wire [63:0] ctr,
+    input  wire [63:0] iv,
+    output reg  ready,
+    output reg  data_out_valid,
+    output reg [511:0] data_out
 );
-    // state = 16×32-bit words
-    wire [31:0] w [0:15];
-    genvar i;
-    generate
-        for(i=0;i<16;i=i+1) assign w[i] = state_in[i*32 +: 32];
-    endgenerate
 
-    // apply 20 rounds (simplified for synthesis, use a loop unroll)
-    // XOR / addition / rotation happens in quarterround modules
-    // (for brevity, I can generate a 20-round pipeline that instantiates multiple chacha_quarterrounds)
+    reg [511:0] state;
+    reg request_pending;
 
+    wire [511:0] chacha_out;
+
+    // Construct initial state: constants + key + counter + nonce
+    wire [511:0] init_state = {32'h61707865,32'h3320646e,32'h79622d32,32'h6b206574, // constants
+                               key[255:224], key[223:192], key[191:160], key[159:128],
+                               key[127:96], key[95:64], key[63:32], key[31:0],
+                               ctr, iv};
+
+    chacha_block CHACHA(.state_in(state), .state_out(chacha_out));
+
+    always @(posedge clk or negedge reset_n) begin
+        if(!reset_n) begin
+            state <= 512'h0;
+            ready <= 1'b1;
+            data_out_valid <= 1'b0;
+            request_pending <= 1'b0;
+            data_out <= 512'h0;
+        end else begin
+            data_out_valid <= 1'b0;
+
+            if((init || next) && ready) begin
+                state <= init_state;
+                request_pending <= 1'b1;
+                ready <= 1'b0;
+            end else if(request_pending) begin
+                data_out <= chacha_out;
+                data_out_valid <= 1'b1;
+                request_pending <= 1'b0;
+                ready <= 1'b1;
+            end
+        end
+    end
 endmodule
