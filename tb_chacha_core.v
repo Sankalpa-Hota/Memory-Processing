@@ -9,6 +9,7 @@ module tb_chacha_core;
 
     integer cycle_count;
     integer block_cycle_count;
+    integer blk;
 
     initial clk = 0;
     always #5 clk = ~clk;
@@ -48,22 +49,29 @@ module tb_chacha_core;
         #20 rst = 1;
         $display("[Cycle %0d] RESET released", cycle_count);
 
-        // INIT
-        block_cycle_count = cycle_count;
-        init = 1; @(posedge clk); init = 0;
-        $display("[Cycle %0d] INIT asserted", cycle_count);
+        // Send 10 blocks sequentially
+        for (blk = 0; blk < 10; blk = blk + 1) begin
+            // INIT
+            block_cycle_count = cycle_count;
+            init = 1; @(posedge clk); init = 0;
+            $display("[Cycle %0d] INIT asserted for block %0d", cycle_count, blk);
 
-        // NEXT
-        block_cycle_count = cycle_count;
-        next = 1; @(posedge clk); next = 0;
-        $display("[Cycle %0d] NEXT asserted", cycle_count);
+            // NEXT
+            block_cycle_count = cycle_count;
+            next = 1; @(posedge clk); next = 0;
+            $display("[Cycle %0d] NEXT asserted for block %0d", cycle_count, blk);
 
-        // Wait for output
-        while(!data_out_valid) @(posedge clk);
-        $display("[Cycle %0d] Data out ready: %h", cycle_count, data_out);
-        $display("Block cycles taken: %0d", cycle_count - block_cycle_count);
+            // Wait for valid output
+            block_cycle_count = cycle_count;
+            while(!data_out_valid) @(posedge clk);
+            $display("[Cycle %0d] Data out ready for block %0d: %h", cycle_count, blk, data_out);
+            $display("Block %0d cycles taken: %0d", blk, cycle_count - block_cycle_count);
 
-        $display("Total simulation cycles: %0d", cycle_count);
+            // Increment counter for next block
+            ctr = ctr + 1;
+        end
+
+        $display("Total simulation cycles for 10 blocks: %0d", cycle_count);
         #20 $finish;
     end
 endmodule
