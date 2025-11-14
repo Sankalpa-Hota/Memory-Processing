@@ -9,11 +9,7 @@ module tb_chacha20_poly1305_core;
   wire [511:0] data_out;
   wire [127:0] tag;
 
-  // cycle counters
-  integer global_cycles;
-  integer start_cycle, block_idx;
-  integer block_start_cycle[0:3];
-  integer block_end_cycle[0:3];
+  integer global_cycles, start_cycle, block_cycles;
 
   // clock
   initial clk=0; forever #5 clk=~clk; end
@@ -35,36 +31,40 @@ module tb_chacha20_poly1305_core;
 
   // global cycle counter
   always @(posedge clk) begin
-    if (!rst) global_cycles = 0;
-    else global_cycles = global_cycles + 1;
+    if (!rst) global_cycles <= 0;
+    else global_cycles <= global_cycles + 1;
   end
 
   initial begin
-    rst = 0; init=0; next=0; done=0; encdec=1;
+    rst = 0; init = 0; next = 0; done = 0; encdec = 1;
     key = 256'h0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;
     nonce = {32'h11111111, 32'h22222222, 32'h33333333};
     data_in = {4{128'hcafebabedeadbeefcafebabedeadbeef}};
 
     #20 rst = 1;
-    #20 init = 1;
+
+    #10 init = 1;
     @(posedge clk); init = 0;
     start_cycle = global_cycles;
     $display("Init asserted at cycle %0d", start_cycle);
 
-    #50 next = 1;
+    #20 next = 1;
     @(posedge clk); next = 0;
     $display("Next asserted at cycle %0d", global_cycles);
 
-    // wait for tag_ok
-    integer timeout; timeout = 5000;
-    while (!tag_ok && timeout > 0) begin
+    // Wait for all four 128-bit blocks
+    integer i;
+    for (i=0; i<4; i=i+1) begin
+      block_cycles = global_cycles;
+      wait(valid == 1);
+      $display("Block %0d processed, cycles = %0d, data_out = %h", i, global_cycles - block_cycles, data_out[127 + i*128 -:128]);
       @(posedge clk);
-      timeout = timeout - 1;
     end
 
-    $display("Tag_ok asserted at cycle %0d", global_cycles);
-    $display("Total cycles from next to tag_ok: %0d", global_cycles - start_cycle);
-    $display("Final tag = %h", tag);
+    // wait for tag
+    wait(tag_ok == 1);
+    $display("Tag computed at cycle %0d, total cycles = %0d", global_cycles, global_cycles - start_cycle);
+    $display("Tag = %h", tag);
 
     #20 $finish;
   end
