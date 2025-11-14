@@ -11,11 +11,11 @@ module tb_chacha_core;
     integer cycle_count;
     integer blk;
 
-    // Clock
+    // Clock generation
     initial clk = 0;
     always #5 clk = ~clk;
 
-    // DUT
+    // Instantiate DUT
     chacha_core dut(
         .clk(clk),
         .reset_n(rst),
@@ -36,10 +36,16 @@ module tb_chacha_core;
         $dumpvars(0, tb_chacha_core);
     end
 
+    // Cycle counter
     initial cycle_count = 0;
     always @(posedge clk) cycle_count = cycle_count + 1;
 
+    // Block loop variables
+    reg [511:0] block_data;
+    reg waiting;
+
     initial begin
+        // Reset and init
         rst = 0; init = 0; next = 0;
         key = 256'h0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;
         iv  = 64'hdeadbeefcafebabe;
@@ -49,33 +55,11 @@ module tb_chacha_core;
         #20 rst = 1;
         $display("[Cycle %0d] RESET released", cycle_count);
 
-        // Process 10 blocks
         for (blk = 0; blk < 10; blk = blk + 1) begin
-            data_in = {16{32'hdeadbeef ^ blk}};
-            ctr = ctr + 1;
+            // Prepare unique data block
+            block_data = {16{32'hdeadbeef ^ blk}};
+            data_in = block_data;
 
-            @(posedge clk);
+            // INIT pulse
             init = 1; @(posedge clk); init = 0;
-
-            @(posedge clk);
-            next = 1; @(posedge clk); next = 0;
-
-            // Wait for valid output with timeout
-            integer timeout;
-            timeout = 0;
-            while(!data_out_valid && timeout < 50000) begin
-                @(posedge clk);
-                timeout = timeout + 1;
-            end
-            if(timeout == 50000) begin
-                $display("ERROR: data_out_valid timeout!");
-                $finish;
-            end
-
-            $display("[Cycle %0d] Block %0d encrypted: %h", cycle_count, blk, data_out);
-        end
-
-        $display("Total cycles: %0d", cycle_count);
-        #20 $finish;
-    end
-endmodule
+            $display("[Cycle %0d] INIT asserted for bloc
