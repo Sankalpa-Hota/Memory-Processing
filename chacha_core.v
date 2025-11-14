@@ -14,12 +14,10 @@ module chacha_core(
 );
     reg [511:0] state;
     reg request_pending;
-
     wire [511:0] chacha_out;
 
-    // Initial 512-bit state: constants + key + counter + nonce
     wire [511:0] init_state = {
-        32'h61707865,32'h3320646e,32'h79622d32,32'h6b206574, // constants
+        32'h61707865,32'h3320646e,32'h79622d32,32'h6b206574,
         key[255:224], key[223:192], key[191:160], key[159:128],
         key[127:96], key[95:64], key[63:32], key[31:0],
         ctr, iv
@@ -42,8 +40,7 @@ module chacha_core(
                 request_pending <= 1'b1;
                 ready <= 0;
             end else if(request_pending) begin
-                // XOR plaintext with keystream to produce ciphertext
-                data_out <= data_in ^ chacha_out;
+                data_out <= data_in ^ chacha_out; // XOR keystream
                 data_out_valid <= 1'b1;
                 request_pending <= 0;
                 ready <= 1'b1;
