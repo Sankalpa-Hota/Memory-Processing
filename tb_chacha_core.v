@@ -8,20 +8,20 @@ module tb_chacha_core;
   wire [511:0] data_out;
   wire data_out_valid;
 
-  integer cycle_count;
+  integer cycle;
+  initial cycle = 0;
 
-  // clock generation
-  initial clk = 0; forever #5 clk = ~clk; end
+  // clock
+  initial begin clk = 0; forever #5 clk = ~clk; end
 
   // DUT
   chacha_core u (
     .clk(clk), .reset_n(rst),
     .init(init), .next(next),
-    .key(key),
+    .keylen(1'b1), .key(key),
     .iv(iv), .ctr(ctr),
-    .ready(ready),
-    .data_out(data_out),
-    .data_out_valid(data_out_valid)
+    .rounds(5'h14), .data_in(512'h0),
+    .ready(ready), .data_out(data_out), .data_out_valid(data_out_valid)
   );
 
   // VCD dump
@@ -31,31 +31,29 @@ module tb_chacha_core;
   end
 
   // cycle counter
-  always @(posedge clk) begin
-    if (!rst) cycle_count <= 0;
-    else cycle_count <= cycle_count + 1;
-  end
+  always @(posedge clk) cycle = cycle + 1;
 
   initial begin
     rst = 0; init = 0; next = 0;
     key = 256'h0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;
-    iv  = 64'hdeadbeefcafebabe;
+    iv = 64'hdeadbeefcafebabe;
     ctr = 64'h0;
-
     #20 rst = 1;
-    #10 init = 1;
+
+    #20 init = 1;
     @(posedge clk); init = 0;
-    $display("Init asserted at cycle %0d", cycle_count);
+    $display("[tb_chacha_core] Init at cycle %0d", cycle);
 
-    #20 next = 1;
+    #50 next = 1;
     @(posedge clk); next = 0;
-    $display("Next asserted at cycle %0d", cycle_count);
+    $display("[tb_chacha_core] Next at cycle %0d", cycle);
 
-    wait (data_out_valid == 1);
-    $display("Keystream valid at cycle %0d", cycle_count);
-    $display("Keystream[511:0] = %h", data_out);
-    $display("Total cycles for keystream generation = %0d", cycle_count);
+    // wait for data_out_valid
+    while (!data_out_valid) @(posedge clk);
+    $display("[tb_chacha_core] Keystream ready at cycle %0d", cycle);
+    $display("[tb_chacha_core] Keystream = %h", data_out);
 
+    $display("[tb_chacha_core] Total cycles: %0d", cycle);
     #20 $finish;
   end
 endmodule
