@@ -1,72 +1,73 @@
 `timescale 1ns/1ps
-module tb_chacha20_poly1305_bus;
-    reg clk, rst, cs, we;
-    reg [7:0] addr;
-    reg [511:0] wdata;
-    wire [511:0] rdata;
+module tb_chacha20_poly1305_core;
+    reg clk, rst, init, next, done, encdec;
+    reg [255:0] key;
+    reg [95:0] nonce;
+    reg [511:0] data_in;
+    wire ready, valid, tag_ok;
+    wire [511:0] data_out;
+    wire [127:0] tag;
 
     integer cycle_count;
     integer block_cycle_count;
 
-    initial clk=0;
-    always #5 clk=~clk;
+    initial clk = 0;
+    always #5 clk = ~clk;
 
-    chacha20_poly1305_bus top(
+    chacha20_poly1305_core dut(
         .clk(clk), .reset_n(rst),
-        .cs(cs), .we(we),
-        .address(addr),
-        .write_data(wdata),
-        .read_data(rdata)
+        .init(init), .next(next), .done(done), .encdec(encdec),
+        .key(key), .nonce(nonce), .data_in(data_in),
+        .ready(ready), .valid(valid), .tag_ok(tag_ok),
+        .data_out(data_out), .tag(tag)
     );
 
     initial begin
-        $dumpfile("tb_chacha20_poly1305_bus.vcd");
-        $dumpvars(0, tb_chacha20_poly1305_bus);
+        $dumpfile("tb_chacha20_poly1305_core.vcd");
+        $dumpvars(0, tb_chacha20_poly1305_core);
     end
 
     initial cycle_count = 0;
     always @(posedge clk) cycle_count = cycle_count + 1;
 
-    task bus_write(input [7:0] a, input [511:0] v);
-    begin
-        block_cycle_count = cycle_count;
-        @(posedge clk); cs=1; we=1; addr=a; wdata=v;
-        @(posedge clk); cs=0; we=0;
-        $display("[Cycle %0d] WRITE addr=%02h, data=%h, cycles=%0d",
-                 cycle_count, a, v, cycle_count - block_cycle_count);
-    end
-    endtask
-
-    task bus_read(input [7:0] a);
-    begin
-        block_cycle_count = cycle_count;
-        @(posedge clk); cs=1; we=0; addr=a;
-        @(posedge clk); cs=0;
-        $display("[Cycle %0d] READ addr=%02h, data=%h, cycles=%0d",
-                 cycle_count, a, rdata, cycle_count - block_cycle_count);
-    end
-    endtask
-
     initial begin
-        rst=0; cs=0; we=0; addr=0; wdata=0;
-        #20 rst=1;
+        rst = 0; init = 0; next = 0; done = 0; encdec = 1;
+        key = 256'h0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;
+        nonce = {32'h11111111,32'h22222222,32'h33333333};
+        data_in = {8{64'hcafebabedeadbeef}};
+
+        #20 rst = 1;
         $display("[Cycle %0d] RESET released", cycle_count);
 
-        // Key write
-        bus_write(8'h10, {16{32'h00112233}});
-        // Nonce write
-        bus_write(8'h20, {16{32'h01020304}});
-        // Data write
-        bus_write(8'h30, {16{32'hdeadbeef}});
-        // Init
-        bus_write(8'h08, 512'h1);
-        // Next
-        bus_write(8'h08, 512'h2);
-        // Done
-        bus_write(8'h08, 512'h4);
+        for (blk = 0; blk < 10; blk = blk + 1) begin
+            data_in = {8{64'hcafebabedeadbeef + blk}};
 
-        #20 bus_read(8'h09); // status
-        $display("[Cycle %0d] Total simulation cycles = %0d", cycle_count, cycle_count);
+            // INIT
+            block_cycle_count = cycle_count;
+            init = 1; @(posedge clk); init = 0;
+            $display("[Cycle %0d] INIT asserted for block %0d", cycle_count, blk);
+
+            // NEXT
+            block_cycle_count = cycle_count;
+            next = 1; @(posedge clk); next = 0;
+            $display("[Cycle %0d] NEXT asserted for block %0d", cycle_count, blk);
+
+            // Wait for valid output
+            block_cycle_count = cycle_count;
+            while(!valid) @(posedge clk);
+            $display("[Cycle %0d] VALID output received for block %0d, data_out=%h",
+                     cycle_count, blk, data_out);
+            $display("Block cycles taken: %0d", cycle_count - block_cycle_count);
+
+            // Wait for tag
+            block_cycle_count = cycle_count;
+            while(!tag_ok) @(posedge clk);
+            $display("[Cycle %0d] TAG computed for block %0d, tag=%h",
+                     cycle_count, blk, tag);
+            $display("Tag computation cycles: %0d", cycle_count - block_cycle_count);
+        end
+
+        $display("Total simulation cycles for 10 blocks = %0d", cycle_count);
         #20 $finish;
     end
 endmodule
