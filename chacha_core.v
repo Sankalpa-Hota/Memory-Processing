@@ -15,6 +15,8 @@ module chacha_core(
     reg [511:0] state;
     reg request_pending;
     wire [511:0] chacha_out;
+    wire block_done;
+    reg start_block;
 
     wire [511:0] init_state = {
         32'h61707865,32'h3320646e,32'h79622d32,32'h6b206574,
@@ -23,27 +25,46 @@ module chacha_core(
         ctr, iv
     };
 
-    chacha_block BLOCK(.clk(clk), .rst_n(reset_n), .state_in(state), .state_out(chacha_out));
+    // NOTE: chacha_block now has start and done
+    chacha_block BLOCK(
+        .clk(clk),
+        .rst_n(reset_n),
+        .start(start_block),
+        .state_in(state),
+        .state_out(chacha_out),
+        .done(block_done)
+    );
+
+    // Internal pending flag
+    reg pending_start;
 
     always @(posedge clk or negedge reset_n) begin
         if(!reset_n) begin
             state <= 512'h0;
-            ready <= 1;
-            data_out_valid <= 0;
-            request_pending <= 0;
+            ready <= 1'b1;
+            data_out_valid <= 1'b0;
+            request_pending <= 1'b0;
             data_out <= 512'h0;
+            start_block <= 1'b0;
+            pending_start <= 1'b0;
         end else begin
-            data_out_valid <= 0;
+            data_out_valid <= 1'b0;
+            start_block <= 1'b0;
+
+            // when host asserts init or next and we are ready, load state and start block
             if((init || next) && ready) begin
                 state <= init_state;
-                request_pending <= 1;
-                ready <= 0;
-            end else if(request_pending) begin
+                start_block <= 1'b1;
+                pending_start <= 1'b1;
+                ready <= 1'b0;
+            end else if(pending_start && block_done) begin
+                // block finished, compute XOR and present data_out
                 data_out <= data_in ^ chacha_out;
-                data_out_valid <= 1;
-                request_pending <= 0;
-                ready <= 1;
+                data_out_valid <= 1'b1;
+                pending_start <= 1'b0;
+                ready <= 1'b1;
             end
         end
     end
 endmodule
+
