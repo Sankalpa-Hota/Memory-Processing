@@ -9,13 +9,12 @@ module tb_chacha20_poly1305_core;
     wire [127:0] tag;
 
     integer cycle_count;
-    integer step_cycle_count;
-    integer blk, data_idx;
+    integer data_idx;
 
-    reg [511:0] data_blocks [0:1]; // two different data blocks
+    reg [511:0] data_blocks [0:1];
 
     initial clk = 0;
-    always #5 clk = ~clk; // 100MHz clock
+    always #5 clk = ~clk;
 
     chacha20_poly1305_core dut(
         .clk(clk),
@@ -43,61 +42,57 @@ module tb_chacha20_poly1305_core;
     always @(posedge clk) cycle_count = cycle_count + 1;
 
     initial begin
-        // Initialize two different 512-bit data blocks
+        // 512-bit data blocks
         data_blocks[0] = {8{64'hcafebabedeadbeef}};
         data_blocks[1] = {8{64'h0123456789abcdef}};
 
-        // Reset & configuration
-        rst = 0; init = 0; next = 0; done = 0; encdec = 1;
+        // Reset
+        rst = 0; init=0; next=0; done=0; encdec=1;
         key = 256'h0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;
         nonce = {32'h11111111,32'h22222222,32'h33333333};
 
         #20 rst = 1;
-        $display("[Cycle %0d] RESET released", cycle_count);
-        $display("Key size = %0d bits", $bits(key));
 
-        // Loop over two data blocks
-        for (data_idx = 0; data_idx < 2; data_idx = data_idx + 1) begin
+        for(data_idx=0; data_idx<2; data_idx=data_idx+1) begin
             data_in = data_blocks[data_idx];
-            $display("[Cycle %0d] DATA_BLOCK %0d loaded, size = %0d bits, data_in = %h",
-                     cycle_count, data_idx, $bits(data_in), data_in);
 
-            // INIT step
-            step_cycle_count = cycle_count;
+            @(posedge clk);
             init = 1; @(posedge clk); init = 0;
-            $display("[Cycle %0d] INIT asserted for DATA_BLOCK %0d, cycles = %0d",
-                     cycle_count, data_idx, cycle_count - step_cycle_count);
 
-            // NEXT step (start encryption)
-            step_cycle_count = cycle_count;
+            @(posedge clk);
             next = 1; @(posedge clk); next = 0;
-            $display("[Cycle %0d] NEXT asserted for DATA_BLOCK %0d, starting encryption",
-                     cycle_count, data_idx);
 
-            // Wait for valid output
-            step_cycle_count = cycle_count;
-            while(!valid) @(posedge clk);
-            $display("[Cycle %0d] VALID data_out received for DATA_BLOCK %0d, data_out size = %0d bits, data_out = %h",
-                     cycle_count, data_idx, $bits(data_out), data_out);
-            $display("Encryption cycles taken = %0d", cycle_count - step_cycle_count);
+            // Wait for valid with timeout
+            integer timeout;
+            timeout = 0;
+            while(!valid && timeout < 50000) begin
+                @(posedge clk);
+                timeout = timeout + 1;
+            end
+            if(timeout == 50000) begin
+                $display("ERROR: VALID timeout!");
+                $finish;
+            end
+            $display("[Cycle %0d] DATA_BLOCK %0d encrypted: %h", cycle_count, data_idx, data_out);
 
-            // Wait for tag computation
-            step_cycle_count = cycle_count;
-            while(!tag_ok) @(posedge clk);
-            $display("[Cycle %0d] TAG computed for DATA_BLOCK %0d, tag size = %0d bits, tag = %h",
-                     cycle_count, data_idx, $bits(tag), tag);
-            $display("Tag computation cycles = %0d", cycle_count - step_cycle_count);
-
-            // DONE step
-            step_cycle_count = cycle_count;
+            @(posedge clk);
             done = 1; @(posedge clk); done = 0;
-            $display("[Cycle %0d] DONE asserted for DATA_BLOCK %0d, cycles = %0d",
-                     cycle_count, data_idx, cycle_count - step_cycle_count);
 
-            $display("------------------------------------------------------");
+            // Wait for tag
+            timeout = 0;
+            while(!tag_ok && timeout < 50000) begin
+                @(posedge clk);
+                timeout = timeout + 1;
+            end
+            if(timeout == 50000) begin
+                $display("ERROR: TAG timeout!");
+                $finish;
+            end
+            $display("[Cycle %0d] DATA_BLOCK %0d tag = %h", cycle_count, data_idx, tag);
         end
 
-        $display("Total simulation cycles for all DATA_BLOCKS = %0d", cycle_count);
+        $display("Simulation done. Total cycles = %0d", cycle_count);
         #20 $finish;
     end
 endmodule
+
