@@ -6,7 +6,6 @@ module tb_chacha20_poly1305_bus;
     wire [511:0] rdata;
 
     integer cycle_count;
-    integer block_cycle_count;
     integer blk;
 
     reg [511:0] data_input0, data_input1;
@@ -32,95 +31,97 @@ module tb_chacha20_poly1305_bus;
     initial cycle_count = 0;
     always @(posedge clk) cycle_count = cycle_count + 1;
 
-    task bus_write(input [7:0] a, input [511:0] v);
+    // 32-bit write task
+    task bus_write32(input [7:0] a, input [31:0] v);
     begin
-        block_cycle_count = cycle_count;
-        @(posedge clk); cs=1; we=1; addr=a; wdata=v;
+        @(posedge clk); cs=1; we=1; addr=a; wdata={480'h0,v};
         @(posedge clk); cs=0; we=0;
-        $display("[Cycle %0d] WRITE addr=%02h, data size=%0d bits, cycles=%0d",
-                 cycle_count, a, $bits(v), cycle_count - block_cycle_count);
     end
     endtask
 
-    task bus_read(input [7:0] a);
+    // 512-bit write task
+    task bus_write512(input [7:0] a, input [511:0] v);
     begin
-        block_cycle_count = cycle_count;
+        @(posedge clk); cs=1; we=1; addr=a; wdata=v;
+        @(posedge clk); cs=0; we=0;
+    end
+    endtask
+
+    // 32-bit read task
+    task bus_read32(input [7:0] a, output [31:0] val);
+    begin
         @(posedge clk); cs=1; we=0; addr=a;
         @(posedge clk); cs=0;
-        $display("[Cycle %0d] READ addr=%02h, data size=%0d bits, cycles=%0d, data=%h",
-                 cycle_count, a, $bits(rdata), cycle_count - block_cycle_count, rdata);
+        val = rdata[31:0];
     end
     endtask
 
     initial begin
-        rst = 0; cs = 0; we = 0; addr = 0; wdata = 0;
+        rst = 0; cs=0; we=0; addr=0; wdata=0;
 
-        // Example data
         data_input0 = {16{32'hdeadbeef}};
         data_input1 = {16{32'hcafebabe}};
 
         #20 rst = 1;
-        $display("[Cycle %0d] RESET released", cycle_count);
 
         // Write key
-        bus_write(8'h10, 32'h00112233);
-        bus_write(8'h11, 32'h44556677);
-        bus_write(8'h12, 32'h8899aabb);
-        bus_write(8'h13, 32'hccddeeff);
-        bus_write(8'h14, 32'h01234567);
-        bus_write(8'h15, 32'h89abcdef);
-        bus_write(8'h16, 32'hfedcba98);
-        bus_write(8'h17, 32'h76543210);
+        bus_write32(8'h10, 32'h00112233);
+        bus_write32(8'h11, 32'h44556677);
+        bus_write32(8'h12, 32'h8899aabb);
+        bus_write32(8'h13, 32'hccddeeff);
+        bus_write32(8'h14, 32'h01234567);
+        bus_write32(8'h15, 32'h89abcdef);
+        bus_write32(8'h16, 32'hfedcba98);
+        bus_write32(8'h17, 32'h76543210);
 
         // Write nonce
-        bus_write(8'h20, 32'h11111111);
-        bus_write(8'h21, 32'h22222222);
-        bus_write(8'h22, 32'h33333333);
+        bus_write32(8'h20, 32'h11111111);
+        bus_write32(8'h21, 32'h22222222);
+        bus_write32(8'h22, 32'h33333333);
 
-        // -------------------------
-        // Process two different data inputs
-        // -------------------------
-        for (blk = 0; blk < 2; blk = blk + 1) begin
-            if(blk==0) bus_write(8'h30, data_input0);
-            else      bus_write(8'h30, data_input1);
+        for(blk=0; blk<2; blk=blk+1) begin
+            if(blk==0) bus_write512(8'h30, data_input0);
+            else      bus_write512(8'h30, data_input1);
 
             // INIT
-            bus_write(8'h08, 512'h1);
-            $display("[Cycle %0d] INIT asserted for block %0d", cycle_count, blk);
+            bus_write32(8'h08, 32'h1);
 
             // NEXT
-            bus_write(8'h08, 512'h2);
-            $display("[Cycle %0d] NEXT asserted for block %0d", cycle_count, blk);
+            bus_write32(8'h08, 32'h2);
 
-            // Wait for valid output
+            // Wait for valid
+            integer timeout; timeout=0;
             while(1) begin
-                bus_read(8'h09); // read status
-                if(rdata[1]) begin
-                    bus_read(8'h30); // read data_out
-                    $display("[Cycle %0d] VALID output for block %0d", cycle_count, blk);
-                    disable while;
-                end
+                bus_read32(8'h09, wdata[31:0]);
+                if(wdata[1]) break;
                 @(posedge clk);
+                timeout = timeout + 1;
+                if(timeout>50000) begin $display("ERROR: VALID timeout"); $finish; end
             end
+
+            // Read data
+            bus_read32(8'h30, wdata[31:0]);
+            $display("[Cycle %0d] VALID output block %0d", cycle_count, blk);
 
             // Wait for tag
+            timeout=0;
             while(1) begin
-                bus_read(8'h09);
-                if(rdata[2]) begin
-                    bus_read(8'h40); // read tag
-                    $display("[Cycle %0d] TAG computed for block %0d", cycle_count, blk);
-                    disable while;
-                end
+                bus_read32(8'h09, wdata[31:0]);
+                if(wdata[2]) break;
                 @(posedge clk);
+                timeout = timeout + 1;
+                if(timeout>50000) begin $display("ERROR: TAG timeout"); $finish; end
             end
 
-            // Done
-            bus_write(8'h08, 512'h4);
+            bus_read32(8'h40, wdata[31:0]);
+            $display("[Cycle %0d] TAG computed block %0d", cycle_count, blk);
 
-            $display("Block %0d processing done. Total cycles so far: %0d\n", blk, cycle_count);
+            // DONE
+            bus_write32(8'h08, 32'h4);
         end
 
-        $display("Total simulation cycles for 2 data blocks = %0d", cycle_count);
+        $display("Simulation complete. Total cycles = %0d", cycle_count);
         #20 $finish;
     end
 endmodule
+
